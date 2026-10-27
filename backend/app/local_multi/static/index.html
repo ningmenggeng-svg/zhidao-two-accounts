@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>知到 · 多账号本地版</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <div id="app-shell" class="app-shell">
+    <aside class="sidebar">
+      <a class="brand" href="/" aria-label="知到多账号首页"><span class="brand-mark">知</span><span>轮流学<small>知到 · 多账号本地版</small></span></a>
+      <div class="local-badge"><span class="dot"></span> 账号数据保存在本机</div>
+      <div class="sidebar-heading"><span>我的账号（最多 2 个） <b id="account-count">0</b></span><button class="icon-button" id="add-account" aria-label="添加账号" title="添加账号">＋</button></div>
+      <div id="account-list" class="account-list"></div>
+      <button class="button dashed" id="add-account-bottom">＋ 添加账号</button>
+      <div class="sidebar-note"><strong>按列表顺序，逐个执行</strong><p>每个账号只执行自己勾选的课程。用 ↑ ↓ 调整账号顺序。</p></div>
+      <footer class="sidebar-footer"><span>基于 University Helper</span><button id="shutdown" class="text-button">退出程序</button></footer>
+    </aside>
+
+    <main>
+      <div class="account-view-picker"><label for="view-account">查看账号</label><select id="view-account" disabled><option value="">先添加账号</option></select><span id="view-account-summary"></span></div>
+      <header class="page-heading"><div><div class="eyebrow">YOUR LEARNING WORKSPACE</div><h1>把课程安排好</h1><p>保存账号，选好课程，按你的安排开始。</p></div><span id="queue-badge" class="badge">尚未开始</span></header>
+      <div id="offline" class="notice error" hidden>暂时连接不到本地程序，请重新打开程序。页面恢复连接后会自动更新。</div>
+
+      <section class="summary-grid" aria-label="执行概览">
+        <div class="summary-card"><span>执行账号</span><div><strong id="included-count">0</strong><small>个账号</small></div></div>
+        <div class="summary-card"><span>已选课程</span><div><strong id="selected-count">0</strong><small>门课程</small></div></div>
+        <div class="summary-card"><span>本轮完成</span><div><strong id="finished-count">0</strong><small id="finished-total">/ 0 门</small></div></div>
+      </section>
+
+      <section class="card courses-card">
+        <div class="section-heading"><div><div class="eyebrow">01 / COURSE SELECTION</div><h2 id="course-title">先添加一个账号</h2><p id="course-subtitle">添加后，登录获取该账号的课程列表。</p></div><div class="actions"><button id="edit-account" class="button secondary" hidden>编辑账号</button><button id="password-login" class="button primary" hidden>账号密码登录</button><button id="qr-login" class="button secondary" hidden>扫码登录</button><button id="refresh-courses" class="button secondary" disabled><span class="refresh-symbol">↻</span> 获取课程</button></div></div>
+        <div id="course-error" class="notice error" hidden></div>
+        <div id="course-tools" class="course-tools" hidden><label><input id="select-all" type="checkbox"> 全选课程</label><input id="course-search" type="search" placeholder="搜索课程名称" aria-label="搜索课程"><span id="course-selection-count">已选 0 门</span></div>
+        <div id="course-list" class="course-list"><div class="empty"><span class="empty-icon">▤</span><h3>从一个账号开始</h3><p>点击左侧「添加账号」，保存后即可获取课程。</p></div></div>
+        <div class="card-footnote"><span class="dot"></span><span id="selection-note">课程选择自动保存，重新打开程序仍会保留。</span></div>
+      </section>
+
+      <div class="lower-grid">
+        <section class="card settings-card"><div class="section-heading compact"><div><div class="eyebrow">02 / START & EXECUTION</div><h2>启动与执行</h2></div></div>
+          <div class="field-row"><label for="start-mode">课程启动方式</label><select id="start-mode"><option value="manual">手动开始</option><option value="daily">每日定时</option></select></div>
+          <div id="daily-time-row" class="time-row" hidden><div><label for="daily-time">每天开始时间</label><small>北京时间 · UTC+8</small></div><input id="daily-time" type="time" value="09:00"></div>
+          <p id="next-run" class="next-run">定时尚未启用</p>
+          <label class="check-row"><input id="autostart-enabled" type="checkbox" disabled><span>开机自启动</span></label>
+          <p id="autostart-status" class="hint">正在读取启动设置…</p>
+          <div class="divider"></div>
+          <div class="field-row"><label for="execution-mode">账号执行方式</label><select id="execution-mode"><option value="sequential">按顺序轮流</option><option value="parallel">多账号同时执行</option></select></div>
+          <div id="parallel-accounts-row" class="field-row" hidden><label for="parallel-accounts">同时运行账号数<small>同一账号的课程按顺序执行</small></label><div class="number-field"><input id="parallel-accounts" type="number" min="1" max="2" value="2" aria-label="同时运行账号数"> 个</div></div>
+          <div class="field-row"><label for="speed">播放速度</label><select id="speed"><option value="1">1.0 ×</option><option value="1.5">1.5 ×</option><option value="2">2.0 ×</option></select></div>
+          <div class="field-row"><label for="course-minutes">每门运行上限<small>0 表示不限制</small></label><div class="number-field"><input id="course-minutes" type="number" min="0" max="240" value="0" aria-label="每门课程运行上限分钟"> 分钟</div></div>
+          <label class="check-row"><input id="auto-answer" type="checkbox" checked><span>自动处理视频弹题</span></label>
+          <label class="check-row"><input id="continue-on-error" type="checkbox" checked><span>失败后继续后面的账号与课程</span></label>
+          <button id="save-settings" class="button secondary full">保存运行设置</button>
+          <p class="hint">定时需要电脑开机、联网且程序运行。关闭此网页后程序仍在后台；点「退出程序」会停止。</p>
+        </section>
+
+        <section class="card queue-card"><div class="section-heading compact"><div><div class="eyebrow">03 / EXECUTION QUEUE</div><h2 id="queue-title">轮流执行</h2></div><div class="actions"><button id="pause-queue" class="button secondary small" hidden>暂停</button><button id="stop-queue" class="button danger small" hidden>停止</button><button id="start-current" class="button secondary" disabled>只启动当前账号</button><button id="start-queue" class="button primary" disabled>▶ 开始执行</button></div></div>
+          <p class="queue-selection-hint">左侧勾选本轮执行账号，也可选择一个账号后点「只启动当前账号」。</p>
+          <div class="queue-overall">
+            <div class="queue-progress-heading"><span id="queue-progress-label">本轮整体进度</span><strong id="queue-progress-percent">0.0%</strong></div>
+            <progress id="queue-progress" max="100" value="0" aria-labelledby="queue-progress-label"></progress>
+            <p id="queue-progress-detail">开始执行后，进度会自动更新。</p>
+          </div>
+          <div id="queue-list" class="queue-list"><div class="empty mini"><span class="empty-icon">↳</span><h3>准备好了，再开始</h3><p>为账号勾选课程后，点击「开始执行」。</p></div></div>
+          <div class="log-heading"><strong>运行记录</strong><span>自动更新</span></div><div id="logs" class="logs" role="log" aria-label="运行记录"><p>尚无运行记录。</p></div>
+        </section>
+      </div>
+      <footer class="page-footer"><span>知到双账号免激活版 · 1.5</span><span>登录状态加密保存 · 账号密码在官方页填写</span></footer>
+    </main>
+  </div>
+  <dialog id="account-dialog"><form id="account-form"><div class="dialog-heading"><div><div class="eyebrow">ACCOUNT DETAILS</div><h2 id="dialog-title">添加账号</h2></div><button type="button" class="icon-button" id="close-dialog" aria-label="关闭">×</button></div><label class="form-label" for="account-label">账号备注 <small>可选，方便区分</small></label><input id="account-label" maxlength="100" placeholder="例如：我的账号、备用账号"><p class="hint">这里只保存备注。账号密码请在 Edge 打开的知到官方页面手动填写；登录成功后，本程序保存登录状态供后续使用。</p><p id="form-error" class="form-error" hidden></p><div class="dialog-actions"><button type="button" id="delete-account" class="button danger" hidden>删除账号</button><button type="submit" id="submit-account" class="button primary">保存账号</button></div></form></dialog>
+  <dialog id="confirm-dialog"><div class="dialog-heading"><h2 id="confirm-title">确认操作</h2></div><p id="confirm-message"></p><div class="dialog-actions"><button id="confirm-no" class="button secondary">取消</button><button id="confirm-yes" class="button danger">确认</button></div></dialog>
+  <dialog id="qr-dialog"><div class="dialog-heading"><div><div class="eyebrow">ZHIDAO APP LOGIN</div><h2>知到扫码登录</h2></div><button id="qr-close" class="icon-button" aria-label="关闭扫码窗口">×</button></div><p id="qr-caption" class="hint"></p><div class="qr-image-wrap"><img id="qr-image" alt="使用知到 App 扫描此二维码登录" hidden></div><p id="qr-message" class="qr-message">正在生成二维码…</p><p class="hint">打开知到 App 的「扫一扫」，扫描后在手机上确认。登录状态会加密保存在本机。</p><div class="dialog-actions"><button id="qr-regenerate" class="button secondary" hidden>重新获取二维码</button></div></dialog>
+  <dialog id="password-login-dialog">
+    <div class="dialog-heading"><div><div class="eyebrow">OFFICIAL PASSWORD LOGIN</div><h2>账号密码登录</h2></div><button id="password-login-close" class="icon-button" aria-label="关闭账号密码登录">×</button></div>
+    <p id="password-login-caption" class="hint"></p><p id="password-login-window" class="local-badge">正在连接专用登录窗口</p>
+    <p id="password-login-message" class="qr-message">正在打开官方登录窗口…</p>
+    <p class="hint">在新打开的 Edge 窗口选择「密码登录」，手动填写账号密码并点击登录；协议和验证码请手动完成。成功后窗口会关闭，课程会自动显示在这里。</p>
+    <p class="hint">找不到窗口时，点「显示登录窗口」。程序会尝试恢复并最大化当前账号的官方窗口。</p>
+    <p class="hint">登录没有等待时限。关闭此对话框会取消本次登录；只关闭管理网页，官方窗口仍会继续等待。本程序使用单独的浏览器资料目录保存登录状态。</p>
+    <div class="dialog-actions"><button id="password-login-show" class="button primary" disabled>显示登录窗口</button><button id="password-login-check" class="button secondary">检查登录状态</button></div>
+  </dialog>
+  <div id="toast" class="toast" role="status" hidden></div>
+</body>
+</html>
