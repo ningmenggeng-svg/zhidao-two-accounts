@@ -6,6 +6,8 @@
 
 ## Windows 使用
 
+Windows 用户请到 [Releases 下载软件包和使用说明](https://github.com/ningmenggeng-svg/zhidao-two-accounts/releases/latest)。下载 Windows ZIP 后完整解压即可运行；GitHub 的“Download ZIP”下载的是源码。
+
 解压完整的 `ZhidaoMulti-Windows.zip`，进入 `ZhidaoMulti` 文件夹，双击 `ZhidaoMulti.exe`。保留同目录的 `_internal` 文件夹，不要只移动 exe。
 
 本版直接进入管理页，无需激活码、邀请码、机器绑定或 API 密钥。最多保存 2 个账号，同时最多运行 2 个账号；删除账号后可以添加其他账号。新用户完整步骤请阅读随包的“先看这里-使用说明.txt”。
