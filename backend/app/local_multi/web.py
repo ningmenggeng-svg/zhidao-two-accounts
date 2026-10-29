@@ -101,7 +101,7 @@ def create_app(directory: Path, *, factory=None, scheduler=True, autostart=None)
 
     @app.get("/api/health")
     def health():
-        return {"application": "zhidao-multi-local", "version": "1.5.0"}
+        return {"application": "zhidao-multi-local", "version": "1.5.1"}
 
     @app.get("/api/state")
     def state():

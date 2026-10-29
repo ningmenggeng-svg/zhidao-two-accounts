@@ -3,18 +3,22 @@
 from __future__ import annotations
 
 import copy
+import logging
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
+from .failures import MESSAGES, CourseReadError, classify_failure
 from .password_browser import PasswordLogin
 from .qr import QRLogin
 from .store import ACCOUNT_LIMIT, PARALLEL_LIMIT, Store
 
 SHANGHAI = timezone(timedelta(hours=8))
 TERMINAL = {"completed", "cancelled", "error", "failed"}
+COURSE_RETRY_DELAYS = (1.0, 3.0)
+logger = logging.getLogger(__name__)
 
 
 def now():
@@ -32,6 +36,8 @@ def next_daily(clock: str, current: datetime | None = None):
 
 def friendly_error(exc: Exception):
     # Do not expose remote exception bodies, request URLs, passwords or cookies.
+    if isinstance(exc, CourseReadError):
+        return exc.user_message()
     message = str(exc).lower()
     if "login_required" in message:
         return "请先点击「账号密码登录」，在 Edge 官方页面完成登录后再获取课程。"
@@ -53,7 +59,8 @@ def friendly_error(exc: Exception):
         return "账号或密码不正确，请在 Edge 官方页面检查后重试。"
     if any(word in message for word in ("timeout", "connection", "resolve", "ssl", "proxy")):
         return "连接知到失败，请检查网络，稍后重试。"
-    return "知到未接受本次请求，请检查登录状态或稍后重试。"
+    failure = classify_failure(exc)
+    return MESSAGES.get(failure.kind, "知到未接受本次请求，请检查登录状态或稍后重试。")
 
 
 def course_list(raw: list[dict]):
@@ -162,20 +169,45 @@ class Manager:
             }
 
     def _login(self, account):
-        adapter = self.factory()
         credentials = account["credentials"]
         cookies = credentials.get("cookies")
-        if cookies:
+        if not cookies:
+            raise ValueError("login_required")
+        attempts = len(COURSE_RETRY_DELAYS) + 1
+        for attempt in range(1, attempts + 1):
+            if self.closing.is_set() or (self.active and not self._wait_unpaused()):
+                raise InterruptedError("course_request_cancelled")
+            adapter = self.factory()
             try:
                 adapter.auth.cookies = cookies
                 adapter._init_services(adapter.auth.cookies)
                 courses = adapter.get_courses()
                 return adapter, course_list(courses)
-            except Exception:
+            except Exception as exc:
                 self._close_adapter(adapter)
-                raise ValueError("login_qr_expired" if credentials.get("qr_only") else "login_browser_expired") from None
-        self._close_adapter(adapter)
-        raise ValueError("login_required")
+                failure = classify_failure(exc)
+                # No exception text, response body, URLs, cookies or traceback.
+                logger.warning(
+                    "course_list_failure account_position=%d category=%s attempt=%d/%d exception=%s http_status=%s platform_code=%s",
+                    account["position"] + 1,
+                    failure.kind,
+                    attempt,
+                    attempts,
+                    failure.exception_type,
+                    failure.http_status,
+                    failure.platform_code,
+                )
+                if not failure.retryable or attempt == attempts:
+                    raise CourseReadError(failure, attempt, qr_only=credentials.get("qr_only", False)) from None
+                delay = COURSE_RETRY_DELAYS[attempt - 1]
+                self.log(
+                    f"{account['label']}：获取课程遇到临时连接或服务异常，{delay:g} 秒后重试（第 {attempt + 1}/{attempts} 次）。"
+                )
+                deadline = time.monotonic() + delay
+                while time.monotonic() < deadline:
+                    if self.closing.is_set() or (self.active and self.stop_event.is_set()):
+                        raise InterruptedError("course_request_cancelled")
+                    self.closing.wait(min(0.1, max(0, deadline - time.monotonic())))
 
     @staticmethod
     def _close_adapter(adapter):
@@ -239,7 +271,11 @@ class Manager:
                     )
             settings = self.store.settings()
             self.state = {
-                "status": "running", "source": source, "started": now().isoformat(), "jobs": jobs, "logs": [],
+                "status": "running",
+                "source": source,
+                "started": now().isoformat(),
+                "jobs": jobs,
+                "logs": [],
                 "execution_mode": settings["execution_mode"],
             }
             self.active, self.paused = True, False
@@ -325,6 +361,8 @@ class Manager:
         self.log(f"正在登录：{account['label']}。")
         try:
             adapter, available = self._login(account)
+        except InterruptedError:
+            return
         except Exception as exc:
             message = friendly_error(exc)
             for job in jobs:

@@ -9,6 +9,7 @@ import requests
 
 from .auth import build_cookie_jar
 from .crypto import HOME_KEY, VIDEO_KEY, WatchPoint, encrypt_secret_str, get_ev, hms
+from .errors import PlatformResponseError
 
 logger = logging.getLogger(__name__)
 
@@ -52,22 +53,25 @@ def _extract(payload: dict) -> dict:
 def _response_data(response, required_key: str | None = None) -> dict:
     """Reject upstream errors before they become an empty successful course/task."""
     if getattr(response, "status_code", 200) != 200:
-        raise ValueError("Zhihuishu upstream response has an unsuccessful HTTP status")
-    payload = response.json()
+        raise PlatformResponseError("http_status", http_status=response.status_code)
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise PlatformResponseError("invalid_json") from exc
     if not isinstance(payload, dict):
-        raise ValueError("Zhihuishu upstream response is not an object")
+        raise PlatformResponseError("invalid_response")
     code = payload.get("code")
     if code is not None and (isinstance(code, bool) or code not in (0, 200, "0", "200")):
-        raise ValueError(f"Zhihuishu upstream response rejected (code {code!r})")
+        raise PlatformResponseError("platform_code", code=code)
     if not any(isinstance(payload.get(key), dict) for key in ("data", "result", "rt")):
-        raise ValueError("Zhihuishu upstream response has no data object")
+        raise PlatformResponseError("missing_data")
     data = _extract(payload)
     # Empty enrollments can omit/null the DTO list while explicitly reporting
     # totalCount=0. Preserve that valid empty response without accepting errors.
     if required_key == "courseOpenDtos" and data.get("totalCount") in (0, "0") and data.get(required_key) is None:
         data = {**data, required_key: []}
     if required_key is not None and not isinstance(data.get(required_key), list):
-        raise ValueError(f"Zhihuishu upstream response has no {required_key} list")
+        raise PlatformResponseError("missing_list")
     return data
 
 
