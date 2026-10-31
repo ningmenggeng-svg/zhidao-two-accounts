@@ -80,6 +80,12 @@ class ZhihuishuAdapter:
         self.learning = ZhihuishuLearning(cookies, self.proxies, uuid=self.auth.uuid)
         self.answer = ZhihuishuAnswer(cookies, self.ai_config, self.proxies)
 
+    def session_cookies(self):
+        if self.learning is not None:
+            return self.auth.capture_session_cookies(self.learning.session.cookies)
+        return dict(self.auth.cookies or {})
+
+
     @staticmethod
     def _task_payload(task: dict[str, Any], include_videos: bool = False) -> dict[str, Any]:
         payload = {

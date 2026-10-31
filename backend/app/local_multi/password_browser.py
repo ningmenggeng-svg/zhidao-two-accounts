@@ -206,10 +206,12 @@ class PasswordLogin:
                             adapter._init_services(adapter.auth.cookies)
                             self._update(job, phase="courses", message="已读取到登录状态，正在获取课程。")
                             courses = self.normalize(adapter.get_courses())
+                            snapshot = getattr(adapter, "session_cookies", None)
+                            saved_cookies = snapshot() if callable(snapshot) else adapter.auth.cookies
                             with self.manager.lock:
                                 if self.job is job and not job["stop"].is_set():
                                     self.manager.store.save_cookies(
-                                        account["id"], adapter.auth.cookies, browser_only=True
+                                        account["id"], saved_cookies, browser_only=True
                                     )
                                     updated = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M")
                                     self.manager.store.save_courses(account["id"], courses, updated)

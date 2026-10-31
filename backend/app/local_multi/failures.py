@@ -17,6 +17,7 @@ class Failure:
 
 
 MESSAGES = {
+    "identity_changed": "官方登录状态与这个账号不一致，请在该账号的官方窗口重新确认。",
     "network_timeout": "连接知到超时，请检查网络后重试。",
     "network_connection": "连接知到失败，请检查网络后重试。",
     "network_proxy": "代理连接失败，请检查代理或网络后重试。",
@@ -55,6 +56,12 @@ def classify_failure(exc):
         current = current.__cause__ or current.__context__
     for error in chain:
         name = type(error).__name__
+        if isinstance(error, ValueError) and str(error) == "login_identity_changed":
+            return Failure("identity_changed", exception_type=name)
+        if isinstance(error, ValueError) and str(error) == "login_redirect_rejected":
+            return Failure("access_denied", exception_type=name)
+        if isinstance(error, ValueError) and str(error) == "login_sso_expired":
+            return Failure("session_invalid", exception_type=name)
         if isinstance(error, PlatformResponseError):
             status, code = error.http_status, error.code
             if status == 401 or code == 401:

@@ -174,6 +174,7 @@ class Manager:
         if not cookies:
             raise ValueError("login_required")
         attempts = len(COURSE_RETRY_DELAYS) + 1
+        recovered = False
         for attempt in range(1, attempts + 1):
             if self.closing.is_set() or (self.active and not self._wait_unpaused()):
                 raise InterruptedError("course_request_cancelled")
@@ -181,8 +182,39 @@ class Manager:
             try:
                 adapter.auth.cookies = cookies
                 adapter._init_services(adapter.auth.cookies)
-                courses = adapter.get_courses()
-                return adapter, course_list(courses)
+                try:
+                    courses = adapter.get_courses()
+                except Exception as exc:
+                    refresh = getattr(adapter.auth, "refresh_session", None)
+                    if (
+                        recovered
+                        or classify_failure(exc).kind != "session_invalid"
+                        or not callable(refresh)
+                    ):
+                        raise
+                    if self.closing.is_set() or (
+                        self.active and self.stop_event.is_set()
+                    ):
+                        raise InterruptedError("course_request_cancelled") from None
+                    self.log(
+                        f"{account['label']}：接口会话已失效，正在使用已保存的官方登录状态自动恢复。"
+                    )
+                    courses, cookies = self._restore_saved_session(
+                        adapter, cookies, refresh
+                    )
+                    recovered = True
+                normalized = course_list(courses)
+                snapshot = getattr(adapter, "session_cookies", None)
+                if callable(snapshot):
+                    self.store.save_cookies(account["id"], snapshot())
+                if recovered:
+                    self.log(
+                        f"{account['label']}：已自动恢复登录状态，无需重新输入密码。"
+                    )
+                return adapter, normalized
+            except InterruptedError:
+                self._close_adapter(adapter)
+                raise
             except Exception as exc:
                 self._close_adapter(adapter)
                 failure = classify_failure(exc)
@@ -198,16 +230,44 @@ class Manager:
                     failure.platform_code,
                 )
                 if not failure.retryable or attempt == attempts:
-                    raise CourseReadError(failure, attempt, qr_only=credentials.get("qr_only", False)) from None
+                    raise CourseReadError(
+                        failure, attempt, qr_only=credentials.get("qr_only", False)
+                    ) from None
                 delay = COURSE_RETRY_DELAYS[attempt - 1]
                 self.log(
                     f"{account['label']}：获取课程遇到临时连接或服务异常，{delay:g} 秒后重试（第 {attempt + 1}/{attempts} 次）。"
                 )
                 deadline = time.monotonic() + delay
                 while time.monotonic() < deadline:
-                    if self.closing.is_set() or (self.active and self.stop_event.is_set()):
+                    if self.closing.is_set() or (
+                        self.active and self.stop_event.is_set()
+                    ):
                         raise InterruptedError("course_request_cancelled")
                     self.closing.wait(min(0.1, max(0, deadline - time.monotonic())))
+
+    def _restore_saved_session(self, adapter, cookies, refresh):
+        def cancelled():
+            return self.closing.is_set() or (self.active and self.stop_event.is_set())
+
+        if cancelled():
+            raise InterruptedError("course_request_cancelled")
+        # An expired service SESSION can mask still-valid official CAS cookies.
+        if cookies.get("SESSION"):
+            cached_login = {
+                key: value for key, value in cookies.items() if key != "SESSION"
+            }
+            adapter.auth.cookies = cached_login
+            adapter._init_services(cached_login)
+            try:
+                return adapter.get_courses(), dict(adapter.auth.cookies)
+            except Exception as exc:
+                if classify_failure(exc).kind != "session_invalid":
+                    raise
+        if cancelled():
+            raise InterruptedError("course_request_cancelled")
+        fresh = refresh(is_cancelled=cancelled)
+        adapter._init_services(fresh)
+        return adapter.get_courses(), fresh
 
     @staticmethod
     def _close_adapter(adapter):

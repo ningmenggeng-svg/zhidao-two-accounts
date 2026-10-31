@@ -100,9 +100,11 @@ class QRLogin:
                     auth.cookies = auth.session.cookies
                     adapter._init_services(auth.cookies)
                     courses = self.normalize(adapter.get_courses())
+                    snapshot = getattr(adapter, "session_cookies", None)
+                    saved_cookies = snapshot() if callable(snapshot) else auth.cookies
                     with self.manager.lock:
                         if self.job is job and self.active:
-                            self.manager.store.save_cookies(job["account_id"], auth.cookies, qr_only=True)
+                            self.manager.store.save_cookies(job["account_id"], saved_cookies, qr_only=True)
                             updated = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M")
                             self.manager.store.save_courses(job["account_id"], courses, updated)
                             self.active = False

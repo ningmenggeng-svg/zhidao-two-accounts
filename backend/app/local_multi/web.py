@@ -97,11 +97,11 @@ def create_app(directory: Path, *, factory=None, scheduler=True, autostart=None)
 
     @app.exception_handler(Exception)
     async def unexpected(request, exc):
-        return JSONResponse({"detail": "本地操作失败，请重新打开程序，或查看 data/service.log。"}, status_code=500)
+        return JSONResponse({"detail": "本地操作失败，请重新打开程序，或查看 data-multi/service.log。"}, status_code=500)
 
     @app.get("/api/health")
     def health():
-        return {"application": "zhidao-multi-local", "version": "1.5.1"}
+        return {"application": "zhidao-multi-local", "version": "1.5.2"}
 
     @app.get("/api/state")
     def state():
