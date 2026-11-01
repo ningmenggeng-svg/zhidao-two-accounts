@@ -5,6 +5,7 @@ from __future__ import annotations
 import ctypes
 import hashlib
 import json
+import logging
 import os
 import shutil
 import sqlite3
@@ -15,6 +16,18 @@ from pathlib import Path
 from uuid import uuid4
 
 from cryptography.fernet import Fernet
+
+logger = logging.getLogger(__name__)
+
+
+def _profile_filesystem_path(profile: Path) -> str:
+    """Use Windows extended paths only after browser_directory validates ownership."""
+    value = str(profile)
+    if os.name != "nt" or value.startswith("\\\\?\\"):
+        return value
+    if value.startswith("\\\\"):
+        return "\\\\?\\UNC\\" + value[2:]
+    return "\\\\?\\" + value
 
 
 def _dpapi(value: bytes, *, decrypt: bool = False) -> bytes:
@@ -229,11 +242,23 @@ class Store:
             if not row:
                 return
             profile = self.browser_directory(row["profile"])
-            if profile.exists():
+            target = _profile_filesystem_path(profile)
+            if os.path.exists(target):
                 try:
-                    shutil.rmtree(profile)
-                except OSError:
-                    raise ValueError("浏览器资料仍被占用，请关闭该账号的 Edge 登录窗口后重试。") from None
+                    shutil.rmtree(target)
+                except OSError as exc:
+                    code = getattr(exc, "winerror", None)
+                    logger.warning(
+                        "profile_delete_failure type=%s winerror=%s errno=%s",
+                        type(exc).__name__, code, exc.errno,
+                    )
+                    if code in {32, 33}:
+                        message = "浏览器资料仍被占用，请关闭该账号的 Edge 登录窗口后重试。"
+                    elif isinstance(exc, PermissionError):
+                        message = "没有权限清理账号的浏览器资料，请检查程序文件夹的写入权限后重试。"
+                    else:
+                        message = "清理账号的浏览器资料失败，账号已保留。请重试或查看 data-multi/service.log。"
+                    raise ValueError(message) from None
             db.execute("DELETE FROM accounts WHERE id=?", (account_id,))
 
     def browser_directory(self, profile: str):
